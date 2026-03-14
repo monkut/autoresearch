@@ -6,10 +6,10 @@ Detailed protocol for the autoresearch iteration loop. SKILL.md has the summary;
 
 Autoresearch supports two loop modes:
 
-- **Unbounded (default):** Loop forever until manually interrupted (`Ctrl+C`)
-- **Bounded:** Loop exactly N times when chained with `/loop N` (requires Claude Code v1.0.32+)
+- **MAX (default):** Loop exactly Loop MAX_AUTORESEARCH_LOOP times chained with `/loop N` or until manually interrupted (`Ctrl+C`)
+- **Bounded:** Loop exactly N times chained with `/loop N`
 
-When bounded, track `current_iteration` against `max_iterations`. After the final iteration, print a summary and stop.
+Track `current_iteration` against `max_iterations`. After the final iteration, print a summary and stop.
 
 ## Phase 1: Review (30 seconds)
 
@@ -20,7 +20,7 @@ Before each iteration, build situational awareness:
 2. Read last 10-20 entries from results log
 3. Read git log --oneline -20 to see recent changes
 4. Identify: what worked, what failed, what's untried
-5. If bounded: check current_iteration vs max_iterations
+5. check current_iteration vs max_iterations
 ```
 
 **Why read every time?** After rollbacks, state may differ from what you expect. Never assume — always verify.
@@ -41,7 +41,7 @@ Pick the NEXT change. Priority order:
 - Don't make multiple unrelated changes at once (can't attribute improvement)
 - Don't chase marginal gains with ugly complexity
 
-**Bounded mode consideration:** If remaining iterations are limited (<3 left), prioritize exploiting successes over exploration.
+**consideration:** If remaining iterations are limited (<3 left), prioritize exploiting successes over exploration.
 
 ## Phase 3: Modify (One Atomic Change)
 
@@ -99,12 +99,6 @@ iteration  commit   metric   status   description
 
 ## Phase 8: Repeat
 
-### Unbounded Mode (default)
-
-Go to Phase 1. **NEVER STOP. NEVER ASK IF YOU SHOULD CONTINUE.**
-
-### Bounded Mode (with /loop N)
-
 ```
 IF current_iteration < max_iterations:
     Go to Phase 1
@@ -145,8 +139,7 @@ Applies to both modes:
 
 ## Communication
 
-- **DO NOT** ask "should I keep going?" — in unbounded mode, YES. ALWAYS. In bounded mode, continue until N is reached.
 - **DO NOT** summarize after each iteration — just log and continue
 - **DO** print a brief one-line status every ~5 iterations (e.g., "Iteration 25: metric at 0.95, 8 keeps / 17 discards")
 - **DO** alert if you discover something surprising or game-changing
-- **DO** print a final summary when bounded loop completes
+- **DO** print a final summary when loop completes
