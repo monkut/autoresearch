@@ -1,32 +1,30 @@
 ---
 name: autoresearch
-description: Autonomous Goal-directed Iteration. Apply Karpathy's autoresearch principles to ANY task. Loops autonomously — modify, verify, keep/discard, repeat. Supports optional loop count via Claude Code's /loop command.
+description: Autonomous Goal-directed Iteration. Loops autonomously — modify, verify, keep/discard, repeat. Supports optional loop count via Claude Code's /loop command.
 version: 1.0.1
 ---
 
 # Claude Autoresearch — Autonomous Goal-directed Iteration
 
-Inspired by [Karpathy's autoresearch](https://github.com/karpathy/autoresearch). Applies constraint-driven autonomous iteration to ANY work — not just ML research.
-
 **Core idea:** You are an autonomous agent. Modify → Verify → Keep/Discard → Repeat.
+
+MAX_AUTORESEARCH_LOOP = 100
 
 ## When to Activate
 
-- User invokes `/autoresearch` or `/ug:autoresearch`
+- User invokes `/autoresearch` 
 - User says "work autonomously", "iterate until done", "keep improving", "run overnight"
 - Any task requiring repeated iteration cycles with measurable outcomes
 
 ## Optional: Controlled Loop Count
 
-By default, autoresearch loops **forever** until manually interrupted. However, users can optionally specify a **loop count** to limit iterations using Claude Code's built-in `/loop` command.
-
-> **Requires:** Claude Code v1.0.32+ (the `/loop` command was introduced in this version)
+By default, autoresearch loops until MAX_AUTORESEARCH_LOOP. However, users can optionally specify a **loop count** to limit iterations using Claude Code's built-in `/loop` command.
 
 ### Usage
 
-**Unlimited (default):**
+**MAX (default):**
 ```
-/autoresearch
+/loop MAX_AUTORESEARCH_LOOP /autoresearch
 Goal: Increase test coverage to 90%
 ```
 
@@ -40,9 +38,11 @@ This chains `/autoresearch` with `/loop 25`, running exactly 25 iteration cycles
 
 ### When to Use Bounded Loops
 
+
+
 | Scenario | Recommendation |
 |----------|---------------|
-| Run overnight, review in morning | Unlimited (default) |
+| Run overnight, review in morning | `/loop MAX_AUTORESEARCH_LOOP /autoresearch |
 | Quick 30-min improvement session | `/loop 10 /autoresearch` |
 | Targeted fix with known scope | `/loop 5 /autoresearch` |
 | Exploratory — see if approach works | `/loop 15 /autoresearch` |
@@ -86,7 +86,7 @@ LOOP (FOREVER or N times):
      - CRASHED → Try to fix (max 3 attempts), else log "crash" and move on
   7. Log: Record result in results log
   8. Repeat: Go to step 1.
-     - If unbounded: NEVER STOP. NEVER ASK "should I continue?"
+     - If unbounded: Stop after MAX_AUTORESEARCH_LOOP iterations, print final summary
      - If bounded (N): Stop after N iterations, print final summary
 ```
 
