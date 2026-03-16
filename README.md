@@ -115,12 +115,14 @@ Before looping, Claude performs a one-time setup:
 ```json
 {
   "autoresearch": {
-    "source": { "source": "github", "repo": "uditgoenka/autoresearch" }
+    "source": { "source": "github", "repo": "uditgoenka/autoresearch" },
+    "installLocation": "<HOME>/.claude/plugins/marketplaces/autoresearch",
+    "lastUpdated": "2026-03-16T00:00:00.000Z"
   }
 }
 ```
 
-> If the file already has entries, add `"autoresearch": { ... }` as a new key alongside the existing ones.
+> Replace `<HOME>` with your home directory path (e.g., `/Users/yourname` on macOS, `C:\\Users\\yourname` on Windows, `/home/yourname` on Linux). If the file already has entries, add `"autoresearch": { ... }` as a new key alongside the existing ones.
 
 **Step 2:** Restart Claude Code, then run:
 
