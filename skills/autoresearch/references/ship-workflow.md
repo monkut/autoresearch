@@ -27,6 +27,26 @@ Target: src/features/auth/**
 Destination: production
 ```
 
+## Interactive Setup (when invoked without flags)
+
+If `/autoresearch:ship` is invoked without `--type` or target, use `AskUserQuestion` to identify what's being shipped.
+
+**Step 1 — What are you shipping?**
+```
+Header: "Ship Setup"
+Question: "What are you shipping?"
+Options: ["Code PR", "Release / version tag", "Deployment to production", "Blog post / documentation", "Marketing email / campaign", "Sales deck / proposal", "Research paper / report", "Design assets", "Let me describe it"]
+```
+
+**Step 2 — Ship mode:**
+```
+Header: "Ship Mode"
+Question: "How should I ship it?"
+Options: ["Full workflow (checklist → dry-run → ship → verify)", "Dry-run only (validate without shipping)", "Checklist only (just check readiness)", "Auto-approve (ship if checklist passes)"]
+```
+
+If `--type`, `--dry-run`, `--auto`, or `--checklist-only` flags are provided, skip interactive setup and proceed directly.
+
 ## Architecture
 
 ```
