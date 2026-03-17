@@ -1,60 +1,223 @@
 #!/usr/bin/env bash
-# Release script — bumps plugin.json version, commits, tags, and creates GitHub release.
-# Usage: ./scripts/release.sh <version>
-# Example: ./scripts/release.sh 1.7.0
+# Release script for autoresearch plugin.
+# Creates a release branch, bumps versions, prompts for doc review,
+# creates a detailed PR, and merges only after confirmation.
+#
+# Usage: ./scripts/release.sh <version> [--title "Release title"]
+# Example: ./scripts/release.sh 1.7.0 --title "New Feature X"
+#
+# Versioning:
+#   v1.6.X  — patch: bugfixes, small updates
+#   v1.X.0  — minor: new features, significant changes
+#   v2.0.0+ — major: reserved for future
 
 set -euo pipefail
 
-VERSION="${1:-}"
+# --- Parse arguments ---
+VERSION=""
+TITLE=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --title) TITLE="$2"; shift 2 ;;
+    *) VERSION="${VERSION:-$1}"; shift ;;
+  esac
+done
+
 if [[ -z "$VERSION" ]]; then
-  echo "Usage: ./scripts/release.sh <version>"
-  echo "Example: ./scripts/release.sh 1.7.0"
+  echo "Usage: ./scripts/release.sh <version> [--title \"Release title\"]"
+  echo ""
+  echo "Versioning guide:"
+  echo "  v1.6.X  — patch: bugfixes, small updates"
+  echo "  v1.X.0  — minor: new features, significant changes"
+  echo ""
+  echo "Example: ./scripts/release.sh 1.7.0 --title \"Scenario Explorer\""
   exit 1
 fi
 
-# Strip leading 'v' if provided (e.g. v1.7.0 → 1.7.0)
+# Strip leading 'v' if provided
 VERSION="${VERSION#v}"
 TAG="v${VERSION}"
-
+BRANCH="release/${VERSION}"
 PLUGIN_JSON=".claude-plugin/plugin.json"
 
-# Verify plugin.json exists
+# --- Preflight checks ---
 if [[ ! -f "$PLUGIN_JSON" ]]; then
-  echo "Error: $PLUGIN_JSON not found"
+  echo "Error: $PLUGIN_JSON not found. Run from repo root."
   exit 1
 fi
 
-# Check for clean working tree
-if [[ -n "$(git status --porcelain -- "$PLUGIN_JSON")" ]]; then
-  echo "Error: $PLUGIN_JSON has uncommitted changes. Commit or stash first."
+if ! command -v gh &>/dev/null; then
+  echo "Error: gh CLI not found. Install: https://cli.github.com"
   exit 1
 fi
+
+if [[ -n "$(git status --porcelain)" ]]; then
+  echo "Error: Working tree is dirty. Commit or stash changes first."
+  exit 1
+fi
+
+# Ensure we're on master
+CURRENT_BRANCH=$(git branch --show-current)
+if [[ "$CURRENT_BRANCH" != "master" ]]; then
+  echo "Error: Must be on master branch. Currently on: $CURRENT_BRANCH"
+  exit 1
+fi
+
+git pull origin master --quiet
 
 # Read current version
 CURRENT=$(grep -o '"version": "[^"]*"' "$PLUGIN_JSON" | cut -d'"' -f4)
-if [[ "$CURRENT" == "$VERSION" ]]; then
-  echo "plugin.json already at version $VERSION — skipping bump."
+echo ""
+echo "=== autoresearch release ==="
+echo "  Current version: $CURRENT"
+echo "  New version:     $VERSION"
+echo "  Tag:             $TAG"
+echo "  Branch:          $BRANCH"
+echo ""
+
+# --- Create release branch ---
+echo "[1/6] Creating release branch: $BRANCH"
+git checkout -b "$BRANCH"
+
+# --- Bump version in plugin.json ---
+echo "[2/6] Bumping plugin.json: $CURRENT → $VERSION"
+if [[ "$(uname)" == "Darwin" ]]; then
+  sed -i '' "s/\"version\": \"$CURRENT\"/\"version\": \"$VERSION\"/" "$PLUGIN_JSON"
 else
-  echo "Bumping plugin.json: $CURRENT → $VERSION"
-
-  # Update version in plugin.json using portable sed
-  if [[ "$(uname)" == "Darwin" ]]; then
-    sed -i '' "s/\"version\": \"$CURRENT\"/\"version\": \"$VERSION\"/" "$PLUGIN_JSON"
-  else
-    sed -i "s/\"version\": \"$CURRENT\"/\"version\": \"$VERSION\"/" "$PLUGIN_JSON"
-  fi
-
-  git add "$PLUGIN_JSON"
-  git commit -m "chore: bump plugin.json version to $VERSION"
+  sed -i "s/\"version\": \"$CURRENT\"/\"version\": \"$VERSION\"/" "$PLUGIN_JSON"
 fi
 
-# Tag and push
-echo "Creating tag $TAG..."
+# --- Bump version badge in README.md ---
+if grep -q "version-.*-blue" README.md; then
+  echo "    Updating version badge in README.md"
+  if [[ "$(uname)" == "Darwin" ]]; then
+    sed -i '' "s/version-[0-9]*\.[0-9]*\.[0-9]*-blue/version-${VERSION}-blue/" README.md
+  else
+    sed -i "s/version-[0-9]*\.[0-9]*\.[0-9]*-blue/version-${VERSION}-blue/" README.md
+  fi
+fi
+
+# --- Doc review prompt ---
+echo ""
+echo "[3/6] Documentation review"
+echo "────────────────────────────────────────"
+echo "  Before continuing, review these files for accuracy:"
+echo ""
+echo "  README.md    — version refs, command table, feature descriptions"
+echo "  EXAMPLES.md  — version tags in headers, new command examples"
+echo ""
+
+# Show what changed since last tag
+LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+if [[ -n "$LAST_TAG" ]]; then
+  echo "  Changes since $LAST_TAG:"
+  git log "$LAST_TAG"..HEAD --oneline --no-decorate | sed 's/^/    /'
+  echo ""
+fi
+
+echo "  If README.md or EXAMPLES.md need updates, edit them now"
+echo "  in another terminal, then come back here and continue."
+echo ""
+read -rp "  Press ENTER when docs are ready (or 'skip' to continue as-is): " DOC_RESPONSE
+
+if [[ "$DOC_RESPONSE" != "skip" ]]; then
+  # Check if README or EXAMPLES were modified
+  if [[ -n "$(git status --porcelain -- README.md EXAMPLES.md)" ]]; then
+    echo "    Staging doc updates..."
+    git add README.md EXAMPLES.md 2>/dev/null || true
+  fi
+fi
+
+# --- Commit all release changes ---
+echo ""
+echo "[4/6] Committing release changes"
+git add -A
+if git diff --cached --quiet; then
+  echo "    No changes to commit."
+else
+  git commit -m "chore: prepare release $TAG"
+fi
+
+# --- Push branch and create PR ---
+echo ""
+echo "[5/6] Pushing branch and creating PR"
+git push -u origin "$BRANCH"
+
+# Build PR body with changelog
+CHANGELOG=""
+if [[ -n "$LAST_TAG" ]]; then
+  CHANGELOG=$(git log "$LAST_TAG"..HEAD --oneline --no-decorate | sed 's/^/- /')
+fi
+
+PR_TITLE="${TITLE:-"Release $TAG"}"
+if [[ ${#PR_TITLE} -gt 70 ]]; then
+  PR_TITLE="Release $TAG"
+fi
+
+PR_URL=$(gh pr create \
+  --base master \
+  --head "$BRANCH" \
+  --title "$PR_TITLE" \
+  --body "$(cat <<EOF
+## Release $TAG
+
+**Version bump:** \`$CURRENT\` → \`$VERSION\`
+
+### Changes since $LAST_TAG
+${CHANGELOG:-"No previous tag found — initial release."}
+
+### Checklist
+- [x] plugin.json version bumped to $VERSION
+- [x] README.md version badge updated
+- [ ] README.md content reviewed for accuracy
+- [ ] EXAMPLES.md reviewed — new commands/features documented
+- [ ] All tests passing
+
+### Files changed
+$(git diff --name-only master..."$BRANCH" 2>/dev/null | sed 's/^/- /' || echo "- (branch just created)")
+EOF
+)")
+
+echo ""
+echo "  PR created: $PR_URL"
+echo ""
+
+# --- Wait for merge confirmation ---
+echo "[6/6] Waiting for merge confirmation"
+echo "────────────────────────────────────────"
+echo "  Review the PR: $PR_URL"
+echo ""
+read -rp "  Type 'merge' to merge, tag, and release (or 'abort' to cancel): " MERGE_RESPONSE
+
+if [[ "$MERGE_RESPONSE" != "merge" ]]; then
+  echo ""
+  echo "  Aborted. The PR remains open at: $PR_URL"
+  echo "  To merge later: gh pr merge $PR_URL --merge --delete-branch"
+  echo "  To clean up:    git checkout master && git branch -D $BRANCH"
+  exit 0
+fi
+
+# --- Merge, tag, and release ---
+echo ""
+echo "  Merging PR..."
+gh pr merge "$PR_URL" --merge --delete-branch
+
+echo "  Switching to master and pulling..."
+git checkout master
+git pull origin master --quiet
+
+echo "  Creating tag $TAG..."
 git tag -a "$TAG" -m "Release $TAG"
-git push origin master --tags
+git push origin "$TAG"
 
-# Create GitHub release (prompts for release notes via editor)
-echo "Creating GitHub release..."
-gh release create "$TAG" --title "$TAG" --generate-notes
+echo "  Creating GitHub release..."
+RELEASE_TITLE="${TAG}"
+if [[ -n "$TITLE" ]]; then
+  RELEASE_TITLE="$TAG — $TITLE"
+fi
+gh release create "$TAG" --title "$RELEASE_TITLE" --generate-notes
 
-echo "Done! Released $TAG"
+echo ""
+echo "=== Released $TAG ==="
+echo "  GitHub release: https://github.com/$(gh repo view --json nameWithOwner -q .nameWithOwner)/releases/tag/$TAG"
+echo "  Plugin version: $VERSION"
